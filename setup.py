@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 
-from setuptools import find_packages, setup
-
 import os
 import subprocess
 import time
+
+from setuptools import find_packages, setup
 
 version_file = 'realesrgan/version.py'
 
@@ -28,7 +28,11 @@ def get_git_hash():
         env['LANGUAGE'] = 'C'
         env['LANG'] = 'C'
         env['LC_ALL'] = 'C'
-        out = subprocess.Popen(cmd, stdout=subprocess.PIPE, env=env).communicate()[0]
+        out = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            env=env
+        ).communicate()[0]
         return out
 
     try:
@@ -59,9 +63,16 @@ version_info = ({})
     sha = get_hash()
     with open('VERSION', 'r') as f:
         SHORT_VERSION = f.read().strip()
-    VERSION_INFO = ', '.join([x if x.isdigit() else f'"{x}"' for x in SHORT_VERSION.split('.')])
+    VERSION_INFO = ', '.join([
+        x if x.isdigit() else f'"{x}"' for x in SHORT_VERSION.split('.')
+    ])
 
-    version_file_str = content.format(time.asctime(), SHORT_VERSION, sha, VERSION_INFO)
+    version_file_str = content.format(
+        time.asctime(),
+        SHORT_VERSION,
+        sha,
+        VERSION_INFO
+    )
     with open(version_file, 'w') as f:
         f.write(version_file_str)
 
@@ -75,7 +86,9 @@ def get_version():
 def get_requirements(filename='requirements.txt'):
     here = os.path.dirname(os.path.realpath(__file__))
     with open(os.path.join(here, filename), 'r') as f:
-        requires = [line.replace('\n', '') for line in f.readlines()]
+        requires = [
+            line.replace('\n', '') for line in f.readlines()
+        ]
     return requires
 
 
@@ -84,15 +97,24 @@ if __name__ == '__main__':
     setup(
         name='realesrgan',
         version=get_version(),
-        description='Real-ESRGAN aims at developing Practical Algorithms for General Image Restoration',
+        description='Real-ESRGAN aims at developing '
+                    'Practical Algorithms for General Image Restoration',
         long_description=readme(),
         long_description_content_type='text/markdown',
         author='Xintao Wang',
         author_email='xintao.wang@outlook.com',
-        keywords='computer vision, pytorch, image restoration, super-resolution, esrgan, real-esrgan',
+        keywords='computer vision, pytorch, image restoration, '
+                 'super-resolution, esrgan, real-esrgan',
         url='https://github.com/xinntao/Real-ESRGAN',
         include_package_data=True,
-        packages=find_packages(exclude=('options', 'datasets', 'experiments', 'results', 'tb_logger', 'wandb')),
+        packages=find_packages(exclude=(
+            'options',
+            'datasets',
+            'experiments',
+            'results',
+            'tb_logger',
+            'wandb'
+        )),
         classifiers=[
             'Development Status :: 4 - Beta',
             'License :: OSI Approved :: Apache Software License',

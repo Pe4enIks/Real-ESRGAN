@@ -1,5 +1,4 @@
 include assets/*
-include inputs/*
 include scripts/*.py
 include inference_realesrgan.py
 include VERSION
