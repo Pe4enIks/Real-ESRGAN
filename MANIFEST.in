@@ -4,4 +4,3 @@ include inference_realesrgan.py
 include VERSION
 include LICENSE
 include requirements.txt
-include weights/README.md
