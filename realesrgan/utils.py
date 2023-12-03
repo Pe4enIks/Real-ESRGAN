@@ -11,19 +11,25 @@ from torch.nn import functional as F
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-class RealESRGANer():
+class RealESRGANer:
     """A helper class for upsampling images with RealESRGAN.
 
     Args:
-        scale (int): Upsampling scale factor used in the networks. It is usually 2 or 4.
-        model_path (str): The path to the pretrained model. It can be urls (will first download it automatically).
+        scale (int): Upsampling scale factor used in the networks.
+            It is usually 2 or 4.
+        model_path (str): The path to the pretrained model.
+            It can be urls (will first download it automatically).
         model (nn.Module): The defined network. Default: None.
-        tile (int): As too large images result in the out of GPU memory issue, so this tile option will first crop
-            input images into tiles, and then process each of them. Finally, they will be merged into one image.
-            0 denotes for do not use tile. Default: 0.
-        tile_pad (int): The pad size for each tile, to remove border artifacts. Default: 10.
-        pre_pad (int): Pad the input images to avoid border artifacts. Default: 10.
-        half (float): Whether to use half precision during inference. Default: False.
+        tile (int): As too large images result in the out of GPU memory issue,
+            so this tile option will first crop input images into tiles,
+            and then process each of them. Finally, they will be merged
+            into one image. 0 denotes for do not use tile. Default: 0.
+        tile_pad (int): The pad size for each tile, to remove border artifacts.
+            Default: 10.
+        pre_pad (int): Pad the input images to avoid border artifacts.
+            Default: 10.
+        half (float): Whether to use half precision during inference.
+            Default: False.
     """
 
     def __init__(self,
@@ -46,20 +52,35 @@ class RealESRGANer():
 
         # initialize model
         if gpu_id:
-            self.device = torch.device(
-                f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu') if device is None else device
+            if device is None:
+                self.device = torch.device(
+                    f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu'
+                )
+            else:
+                self.device = device
         else:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') if device is None else device
+            if device is None:
+                self.device = torch.device(
+                    'cuda' if torch.cuda.is_available() else 'cpu'
+                )
+            else:
+                self.device = device
 
         if isinstance(model_path, list):
             # dni
-            assert len(model_path) == len(dni_weight), 'model_path and dni_weight should have the save length.'
+            assert len(model_path) == len(dni_weight), \
+                'model_path and dni_weight should have the save length.'
             loadnet = self.dni(model_path[0], model_path[1], dni_weight)
         else:
-            # if the model_path starts with https, it will first download models to the folder: weights
+            # if the model_path starts with https,
+            # it will first download models to the folder: weights
             if model_path.startswith('https://'):
                 model_path = load_file_from_url(
-                    url=model_path, model_dir=os.path.join(ROOT_DIR, 'weights'), progress=True, file_name=None)
+                    url=model_path,
+                    model_dir=os.path.join(ROOT_DIR, 'weights'),
+                    progress=True,
+                    file_name=None
+                )
             loadnet = torch.load(model_path, map_location=torch.device('cpu'))
 
         # prefer to use params_ema
@@ -77,7 +98,8 @@ class RealESRGANer():
     def dni(self, net_a, net_b, dni_weight, key='params', loc='cpu'):
         """Deep network interpolation.
 
-        ``Paper: Deep Network Interpolation for Continuous Imagery Effect Transition``
+        Paper:
+            Deep Network Interpolation for Continuous Imagery Effect Transition
         """
         net_a = torch.load(net_a, map_location=torch.device(loc))
         net_b = torch.load(net_b, map_location=torch.device(loc))
@@ -86,7 +108,8 @@ class RealESRGANer():
         return net_a
 
     def pre_process(self, img):
-        """Pre-process, such as pre-pad and mod pad, so that the images can be divisible
+        """Pre-process, such as pre-pad and mod pad,
+            so that the images can be divisible
         """
         img = torch.from_numpy(np.transpose(img, (2, 0, 1))).float()
         self.img = img.unsqueeze(0).to(self.device)
@@ -95,7 +118,11 @@ class RealESRGANer():
 
         # pre_pad
         if self.pre_pad != 0:
-            self.img = F.pad(self.img, (0, self.pre_pad, 0, self.pre_pad), 'reflect')
+            self.img = F.pad(
+                self.img,
+                (0, self.pre_pad, 0, self.pre_pad),
+                'reflect'
+            )
         # mod pad for divisible borders
         if self.scale == 2:
             self.mod_scale = 2
@@ -108,14 +135,19 @@ class RealESRGANer():
                 self.mod_pad_h = (self.mod_scale - h % self.mod_scale)
             if (w % self.mod_scale != 0):
                 self.mod_pad_w = (self.mod_scale - w % self.mod_scale)
-            self.img = F.pad(self.img, (0, self.mod_pad_w, 0, self.mod_pad_h), 'reflect')
+            self.img = F.pad(
+                self.img,
+                (0, self.mod_pad_w, 0, self.mod_pad_h),
+                'reflect'
+            )
 
     def process(self):
         # model inference
         self.output = self.model(self.img)
 
     def tile_process(self):
-        """It will first crop input images to tiles, and then process each tile.
+        """It will first crop input images to tiles,
+            and then process each tile.
         Finally, all the processed tiles are merged into one images.
 
         Modified from: https://github.com/ata4/esrgan-launcher
@@ -152,7 +184,11 @@ class RealESRGANer():
                 input_tile_width = input_end_x - input_start_x
                 input_tile_height = input_end_y - input_start_y
                 tile_idx = y * tiles_x + x + 1
-                input_tile = self.img[:, :, input_start_y_pad:input_end_y_pad, input_start_x_pad:input_end_x_pad]
+                input_tile = self.img[
+                    :, :,
+                    input_start_y_pad:input_end_y_pad,
+                    input_start_x_pad:input_end_x_pad
+                ]
 
                 # upscale tile
                 try:
@@ -169,25 +205,43 @@ class RealESRGANer():
                 output_end_y = input_end_y * self.scale
 
                 # output tile area without padding
-                output_start_x_tile = (input_start_x - input_start_x_pad) * self.scale
-                output_end_x_tile = output_start_x_tile + input_tile_width * self.scale
-                output_start_y_tile = (input_start_y - input_start_y_pad) * self.scale
-                output_end_y_tile = output_start_y_tile + input_tile_height * self.scale
+                output_start_x_tile = \
+                    (input_start_x - input_start_x_pad) * self.scale
+                output_end_x_tile = \
+                    output_start_x_tile + input_tile_width * self.scale
+                output_start_y_tile = \
+                    (input_start_y - input_start_y_pad) * self.scale
+                output_end_y_tile = \
+                    output_start_y_tile + input_tile_height * self.scale
 
                 # put tile into output image
-                self.output[:, :, output_start_y:output_end_y,
-                            output_start_x:output_end_x] = output_tile[:, :, output_start_y_tile:output_end_y_tile,
-                                                                       output_start_x_tile:output_end_x_tile]
+                self.output[
+                    :, :,
+                    output_start_y:output_end_y,
+                    output_start_x:output_end_x
+                ] = output_tile[
+                    :, :,
+                    output_start_y_tile:output_end_y_tile,
+                    output_start_x_tile:output_end_x_tile
+                ]
 
     def post_process(self):
         # remove extra pad
         if self.mod_scale is not None:
             _, _, h, w = self.output.size()
-            self.output = self.output[:, :, 0:h - self.mod_pad_h * self.scale, 0:w - self.mod_pad_w * self.scale]
+            self.output = self.output[
+                :, :,
+                0:h - self.mod_pad_h * self.scale,
+                0:w - self.mod_pad_w * self.scale
+            ]
         # remove prepad
         if self.pre_pad != 0:
             _, _, h, w = self.output.size()
-            self.output = self.output[:, :, 0:h - self.pre_pad * self.scale, 0:w - self.pre_pad * self.scale]
+            self.output = self.output[
+                :, :,
+                0:h - self.pre_pad * self.scale,
+                0:w - self.pre_pad * self.scale
+            ]
         return self.output
 
     @torch.no_grad()
@@ -215,19 +269,20 @@ class RealESRGANer():
             img_mode = 'RGB'
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        # ------------------- process image (without the alpha channel) ------------------- #
+        # ---------- process image (without the alpha channel) ---------- #
         self.pre_process(img)
         if self.tile_size > 0:
             self.tile_process()
         else:
             self.process()
         output_img = self.post_process()
-        output_img = output_img.data.squeeze().float().cpu().clamp_(0, 1).numpy()
+        output_img = \
+            output_img.data.squeeze().float().cpu().clamp_(0, 1).numpy()
         output_img = np.transpose(output_img[[2, 1, 0], :, :], (1, 2, 0))
         if img_mode == 'L':
             output_img = cv2.cvtColor(output_img, cv2.COLOR_BGR2GRAY)
 
-        # ------------------- process the alpha channel if necessary ------------------- #
+        # ------------- process the alpha channel if necessary -------------- #
         if img_mode == 'RGBA':
             if alpha_upsampler == 'realesrgan':
                 self.pre_process(alpha)
@@ -236,18 +291,26 @@ class RealESRGANer():
                 else:
                     self.process()
                 output_alpha = self.post_process()
-                output_alpha = output_alpha.data.squeeze().float().cpu().clamp_(0, 1).numpy()
-                output_alpha = np.transpose(output_alpha[[2, 1, 0], :, :], (1, 2, 0))
+                output_alpha = output_alpha.data.squeeze()
+                output_alpha = output_alpha.float().cpu().clamp_(0, 1).numpy()
+                output_alpha = np.transpose(
+                    output_alpha[[2, 1, 0], :, :],
+                    (1, 2, 0)
+                )
                 output_alpha = cv2.cvtColor(output_alpha, cv2.COLOR_BGR2GRAY)
             else:  # use the cv2 resize for alpha channel
                 h, w = alpha.shape[0:2]
-                output_alpha = cv2.resize(alpha, (w * self.scale, h * self.scale), interpolation=cv2.INTER_LINEAR)
+                output_alpha = cv2.resize(
+                    alpha,
+                    (w * self.scale, h * self.scale),
+                    interpolation=cv2.INTER_LINEAR
+                )
 
             # merge the alpha channel
             output_img = cv2.cvtColor(output_img, cv2.COLOR_BGR2BGRA)
             output_img[:, :, 3] = output_alpha
 
-        # ------------------------------ return ------------------------------ #
+        # ----------------------------- return ----------------------------- #
         if max_range == 65535:  # 16-bit image
             output = (output_img * 65535.0).round().astype(np.uint16)
         else:
