@@ -1,3 +1,7 @@
+# <div align="center"> DISCLAIMER</div>
+
+I want to use the Real-ESRGAN project as a git submodule, but I need to do some changes to the submodule, so I've created this fork. You can find all the links in the original README.md below.
+
 <p align="center">
   <img src="assets/realesrgan_logo.png" height=120>
 </p>
