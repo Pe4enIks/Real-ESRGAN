@@ -19,7 +19,6 @@ I want to use the Real-ESRGAN project as a git submodule, but I need to do some 
 [![LICENSE](https://img.shields.io/github/license/xinntao/Real-ESRGAN.svg)](https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE)
 [![python lint](https://github.com/xinntao/Real-ESRGAN/actions/workflows/pylint.yml/badge.svg)](https://github.com/xinntao/Real-ESRGAN/blob/master/.github/workflows/pylint.yml)
 [![Publish-pip](https://github.com/xinntao/Real-ESRGAN/actions/workflows/publish-pip.yml/badge.svg)](https://github.com/xinntao/Real-ESRGAN/blob/master/.github/workflows/publish-pip.yml)
-[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/Pe4enIks/Real-ESRGAN/main.svg)](https://results.pre-commit.ci/latest/github/Pe4enIks/Real-ESRGAN/main)
 
 </div>
 
