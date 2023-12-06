@@ -1,7 +1,8 @@
 import argparse
-import cv2
 import glob
 import os
+
+import cv2
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from basicsr.utils.download_util import load_file_from_url
 
@@ -251,7 +252,8 @@ def main():
         tile_pad=args.tile_pad,
         pre_pad=args.pre_pad,
         half=not args.fp32,
-        gpu_id=args.gpu_id)
+        gpu_id=args.gpu_id
+    )
 
     if args.face_enhance:  # Use GFPGAN for face enhancement
         from gfpgan import GFPGANer

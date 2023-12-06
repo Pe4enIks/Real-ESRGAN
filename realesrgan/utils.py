@@ -1,9 +1,10 @@
-import cv2
 import math
-import numpy as np
 import os
 import queue
 import threading
+
+import cv2
+import numpy as np
 import torch
 from basicsr.utils.download_util import load_file_from_url
 from torch.nn import functional as F
@@ -51,7 +52,7 @@ class RealESRGANer:
         self.half = half
 
         # initialize model
-        if gpu_id:
+        if gpu_id is not None and gpu_id != -1:
             if device is None:
                 self.device = torch.device(
                     f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu'
