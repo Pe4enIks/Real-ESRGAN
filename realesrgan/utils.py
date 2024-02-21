@@ -107,6 +107,7 @@ class RealESRGANer:
             self.ort_session = ort.InferenceSession(
                 self.onnx_path,
                 providers=[
+                    "TensorrtExecutionProvider",
                     "CUDAExecutionProvider",
                     "CPUExecutionProvider",
                 ],
