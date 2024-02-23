@@ -9,6 +9,7 @@ import onnxruntime as ort
 import torch
 from basicsr.utils.download_util import load_file_from_url
 from torch.nn import functional as F
+from tritonclient import http as httpclient
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -48,6 +49,9 @@ class RealESRGANer:
         gpu_id=None,
         backend="torch",
         onnx_path=None,
+        triton_url=None,
+        triton_model_name=None,
+        triton_model_version=None,
     ):
         self.scale = scale
         self.tile_size = tile
@@ -57,6 +61,9 @@ class RealESRGANer:
         self.half = half
         self.backend = backend
         self.onnx_path = onnx_path
+        self.triton_url = triton_url
+        self.triton_model_name = triton_model_name
+        self.triton_model_version = triton_model_version
 
         # initialize model torch backend
         if self.backend == "torch":
@@ -89,8 +96,7 @@ class RealESRGANer:
                         progress=True,
                         file_name=None,
                     )
-                loadnet = torch.load(
-                    model_path, map_location=torch.device("cpu"))
+                loadnet = torch.load(model_path, map_location=torch.device("cpu"))
 
             # prefer to use params_ema
             if "params_ema" in loadnet:
@@ -114,6 +120,8 @@ class RealESRGANer:
             )
             self.ort_input_name = self.ort_session.get_inputs()[0].name
             self.ort_output_name = self.ort_session.get_outputs()[0].name
+        elif self.backend == "triton":
+            self.triton_client = httpclient.InferenceServerClient(url=self.triton_url)
         else:
             raise ValueError(f"The {self.backend} backend isn't supported")
 
@@ -174,8 +182,7 @@ class RealESRGANer:
 
         # pre_pad
         if self.pre_pad != 0:
-            self.img = F.pad(self.img, (0, self.pre_pad,
-                             0, self.pre_pad), "reflect")
+            self.img = F.pad(self.img, (0, self.pre_pad, 0, self.pre_pad), "reflect")
 
         # mod pad for divisible borders
         if self.scale == 2:
@@ -202,6 +209,19 @@ class RealESRGANer:
                 [self.ort_output_name],
                 {self.ort_input_name: self.img},
             )[0]
+        elif self.backend == "triton":
+            dtype = "FP16" if self.half else "FP32"
+
+            inputs = [httpclient.InferInput("lr", self.img.shape, dtype)]
+            inputs[0].set_data_from_numpy(self.img, binary_data=True)
+
+            outputs = [httpclient.InferRequestedOutput("hr", binary_data=True)]
+            self.output = self.triton_client.infer(
+                model_name=self.triton_model_name,
+                model_version=str(self.triton_model_version),
+                inputs=inputs,
+                outputs=outputs,
+            ).as_numpy("hr")
         else:
             raise ValueError(f"The {self.backend} backend isn't supported")
 
@@ -212,7 +232,7 @@ class RealESRGANer:
 
         Modified from: https://github.com/ata4/esrgan-launcher
         """
-        if self.backend == "onnx":
+        if self.backend == "onnx" or self.backend == "triton":
             raise NotImplementedError(
                 f"The {self.backend} backend isn't supported for tile process yet"
             )
@@ -271,11 +291,9 @@ class RealESRGANer:
                 output_end_y = input_end_y * self.scale
 
                 # output tile area without padding
-                output_start_x_tile = (
-                    input_start_x - input_start_x_pad) * self.scale
+                output_start_x_tile = (input_start_x - input_start_x_pad) * self.scale
                 output_end_x_tile = output_start_x_tile + input_tile_width * self.scale
-                output_start_y_tile = (
-                    input_start_y - input_start_y_pad) * self.scale
+                output_start_y_tile = (input_start_y - input_start_y_pad) * self.scale
                 output_end_y_tile = output_start_y_tile + input_tile_height * self.scale
 
                 # put tile into output image
@@ -291,31 +309,21 @@ class RealESRGANer:
     def post_process(self):
         # remove extra pad
         if self.mod_scale is not None:
-            if self.backend == "torch":
-                _, _, h, w = self.output.size()
-            elif self.backend == "onnx":
-                _, _, h, w = self.output.shape
-            else:
-                raise ValueError(f"The {self.backend} backend isn't supported")
+            _, _, h, w = self.output.shape
             self.output = self.output[
                 :,
                 :,
-                0: h - self.mod_pad_h * self.scale,
-                0: w - self.mod_pad_w * self.scale,
+                0 : h - self.mod_pad_h * self.scale,
+                0 : w - self.mod_pad_w * self.scale,
             ]
         # remove prepad
         if self.pre_pad != 0:
-            if self.backend == "torch":
-                _, _, h, w = self.output.size()
-            elif self.backend == "onnx":
-                _, _, h, w = self.output.shape
-            else:
-                raise ValueError(f"The {self.backend} backend isn't supported")
+            _, _, h, w = self.output.shape
             self.output = self.output[
                 :,
                 :,
-                0: h - self.pre_pad * self.scale,
-                0: w - self.pre_pad * self.scale,
+                0 : h - self.pre_pad * self.scale,
+                0 : w - self.pre_pad * self.scale,
             ]
         return self.output
 
@@ -349,6 +357,8 @@ class RealESRGANer:
             self.pre_process(img)
         elif self.backend == "onnx":
             self.pre_process_numpy(img)
+        elif self.backend == "triton":
+            self.pre_process_numpy(img)
         else:
             raise ValueError(f"The {self.backend} backend isn't supported")
 
@@ -361,6 +371,8 @@ class RealESRGANer:
         if self.backend == "torch":
             output_img = output_img.data.squeeze().float().cpu().clamp_(0, 1).numpy()
         elif self.backend == "onnx":
+            output_img = output_img.squeeze().astype(np.float32).clip(0, 1)
+        elif self.backend == "triton":
             output_img = output_img.squeeze().astype(np.float32).clip(0, 1)
         else:
             raise ValueError(f"The {self.backend} backend isn't supported")
@@ -375,9 +387,10 @@ class RealESRGANer:
                     self.pre_process(alpha)
                 elif self.backend == "onnx":
                     self.pre_process_numpy(alpha)
+                elif self.backend == "triton":
+                    self.pre_process_numpy(alpha)
                 else:
-                    raise ValueError(
-                        f"The {self.backend} backend isn't supported")
+                    raise ValueError(f"The {self.backend} backend isn't supported")
 
                 if self.tile_size > 0:
                     self.tile_process()
@@ -391,11 +404,9 @@ class RealESRGANer:
                 elif self.backend == "onnx":
                     output_alpha = output_alpha.squeeze().astype(np.float32).clip(0, 1)
                 else:
-                    raise ValueError(
-                        f"The {self.backend} backend isn't supported")
+                    raise ValueError(f"The {self.backend} backend isn't supported")
 
-                output_alpha = np.transpose(
-                    output_alpha[[2, 1, 0], :, :], (1, 2, 0))
+                output_alpha = np.transpose(output_alpha[[2, 1, 0], :, :], (1, 2, 0))
                 output_alpha = cv2.cvtColor(output_alpha, cv2.COLOR_BGR2GRAY)
             else:  # use the cv2 resize for alpha channel
                 h, w = alpha.shape[0:2]
