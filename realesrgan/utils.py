@@ -52,6 +52,7 @@ class RealESRGANer:
         triton_url=None,
         triton_model_name=None,
         triton_model_version=None,
+        outscale=None,
     ):
         self.scale = scale
         self.tile_size = tile
@@ -64,6 +65,7 @@ class RealESRGANer:
         self.triton_url = triton_url
         self.triton_model_name = triton_model_name
         self.triton_model_version = triton_model_version
+        self.outscale = outscale
 
         # initialize model torch backend
         if self.backend == "torch":
@@ -106,9 +108,10 @@ class RealESRGANer:
             model.load_state_dict(loadnet[keyname], strict=True)
 
             model.eval()
-            self.model = model.to(self.device)
+            self.net_g = model.to(self.device)
             if self.half:
-                self.model = self.model.half()
+                self.net_g = self.net_g.half()
+            self.dtype = torch.float16 if self.half else torch.float32
         elif self.backend == "onnx":
             self.ort_session = ort.InferenceSession(
                 self.onnx_path,
@@ -203,7 +206,7 @@ class RealESRGANer:
     def process(self):
         # model inference
         if self.backend == "torch":
-            self.output = self.model(self.img)
+            self.output = self.net_g(self.img)
         elif self.backend == "onnx":
             self.output = self.ort_session.run(
                 [self.ort_output_name],
@@ -279,7 +282,7 @@ class RealESRGANer:
                 # upscale tile
                 try:
                     with torch.no_grad():
-                        output_tile = self.model(input_tile)
+                        output_tile = self.net_g(input_tile)
                 except RuntimeError as error:
                     print("Error", error)
                 print(f"\tTile {tile_idx}/{tiles_x * tiles_y}")
@@ -328,7 +331,7 @@ class RealESRGANer:
         return self.output
 
     @torch.no_grad()
-    def enhance(self, img, outscale=None, alpha_upsampler="realesrgan"):
+    def enhance(self, img, alpha_upsampler="realesrgan"):
         h_input, w_input = img.shape[0:2]
         # img: numpy
         img = img.astype(np.float32)
@@ -426,12 +429,12 @@ class RealESRGANer:
         else:
             output = (output_img * 255.0).round().astype(np.uint8)
 
-        if outscale is not None and outscale != float(self.scale):
+        if self.outscale is not None and self.outscale != float(self.scale):
             output = cv2.resize(
                 output,
                 (
-                    int(w_input * outscale),
-                    int(h_input * outscale),
+                    int(w_input * self.outscale),
+                    int(h_input * self.outscale),
                 ),
                 interpolation=cv2.INTER_LANCZOS4,
             )
