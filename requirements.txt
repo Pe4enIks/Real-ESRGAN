@@ -9,3 +9,4 @@ torch>=1.7
 torchvision
 tqdm
 tritonclient[all]
+transformers>=4.38.0

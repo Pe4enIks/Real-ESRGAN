@@ -9,6 +9,7 @@ import onnxruntime as ort
 import torch
 from basicsr.utils.download_util import load_file_from_url
 from torch.nn import functional as F
+from transformers import AutoModel
 from tritonclient import http as httpclient
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -53,6 +54,7 @@ class RealESRGANer:
         triton_model_name=None,
         triton_model_version=None,
         outscale=None,
+        hf_repository=None,
     ):
         self.scale = scale
         self.tile_size = tile
@@ -125,6 +127,27 @@ class RealESRGANer:
             self.ort_output_name = self.ort_session.get_outputs()[0].name
         elif self.backend == "triton":
             self.triton_client = httpclient.InferenceServerClient(url=self.triton_url)
+        elif self.backend == "huggingface":
+            if gpu_id is not None and gpu_id != -1:
+                if device is None:
+                    self.device = torch.device(
+                        f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu"
+                    )
+                else:
+                    self.device = device
+            else:
+                if device is None:
+                    self.device = torch.device("cpu")
+                else:
+                    self.device = device
+
+            model = AutoModel.from_pretrained(hf_repository, trust_remote_code=True)
+
+            model.eval()
+            self.net_g = model.to(self.device)
+            if self.half:
+                self.net_g = self.net_g.half()
+            self.dtype = torch.float16 if self.half else torch.float32
         else:
             raise ValueError(f"The {self.backend} backend isn't supported")
 
@@ -225,6 +248,8 @@ class RealESRGANer:
                 inputs=inputs,
                 outputs=outputs,
             ).as_numpy("hr")
+        elif self.backend == "huggingface":
+            self.output = self.net_g(self.img)
         else:
             raise ValueError(f"The {self.backend} backend isn't supported")
 
@@ -362,6 +387,8 @@ class RealESRGANer:
             self.pre_process_numpy(img)
         elif self.backend == "triton":
             self.pre_process_numpy(img)
+        elif self.backend == "huggingface":
+            self.pre_process(img)
         else:
             raise ValueError(f"The {self.backend} backend isn't supported")
 
@@ -377,6 +404,8 @@ class RealESRGANer:
             output_img = output_img.squeeze().astype(np.float32).clip(0, 1)
         elif self.backend == "triton":
             output_img = output_img.squeeze().astype(np.float32).clip(0, 1)
+        elif self.backend == "huggingface":
+            output_img = output_img.data.squeeze().float().cpu().clamp_(0, 1).numpy()
         else:
             raise ValueError(f"The {self.backend} backend isn't supported")
         output_img = np.transpose(output_img[[2, 1, 0], :, :], (1, 2, 0))
@@ -392,6 +421,8 @@ class RealESRGANer:
                     self.pre_process_numpy(alpha)
                 elif self.backend == "triton":
                     self.pre_process_numpy(alpha)
+                elif self.backend == "huggingface":
+                    self.pre_process(alpha)
                 else:
                     raise ValueError(f"The {self.backend} backend isn't supported")
 
@@ -406,6 +437,11 @@ class RealESRGANer:
                     output_alpha = output_alpha.float().cpu().clamp_(0, 1).numpy()
                 elif self.backend == "onnx":
                     output_alpha = output_alpha.squeeze().astype(np.float32).clip(0, 1)
+                elif self.backend == "triton":
+                    output_alpha = output_alpha.squeeze().astype(np.float32).clip(0, 1)
+                elif self.backend == "huggingface":
+                    output_alpha = output_alpha.data.squeeze()
+                    output_alpha = output_alpha.float().cpu().clamp_(0, 1).numpy()
                 else:
                     raise ValueError(f"The {self.backend} backend isn't supported")
 
